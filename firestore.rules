@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper to get user record
+    function getUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Courses collection
+    match /courses/{courseId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && getUser().role == 'lecturer';
+      allow update, delete: if isAuthenticated() && resource.data.lecturerId == request.auth.uid;
+    }
+
+    // Sessions collection
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && getUser().role == 'lecturer';
+      allow update: if isAuthenticated() && (
+        resource.data.lecturerId == request.auth.uid || 
+        getUser().role == 'student' // Students might need to update session indirectly or through check-ins
+      );
+    }
+
+    // Attendance collection
+    match /attendance/{attendanceId} {
+      allow read: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid || 
+        getUser().role == 'lecturer'
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        request.resource.data.studentId == request.auth.uid ||
+        getUser().role == 'lecturer'
+      );
+    }
+  }
+}
